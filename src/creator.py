@@ -9,6 +9,7 @@ EXAMPLE_INPUT = [
     {
         "col_name": "ID",
         "type": "int",
+        "range": (100, 500),
         "nulls_weight": 5,
         "join_keys_and_weight": {2: 15, 4: 15},
     },
@@ -18,7 +19,7 @@ EXAMPLE_INPUT = [
         "str_len": 10,
         "nulls_weight": 5,
         "email": True,
-        "join_keys_and_weight": {"HIIIIIII": 15, "4": 15},
+        "join_keys_and_weight": {"Hello": 15, "im a join key": 15},
     },
 ]
 
@@ -30,8 +31,9 @@ class Creator:
     @staticmethod
     def percentage_check(prc: int, join_key: dict):
         overall_join_key_weight = 0
-        for weight in join_key.values():
-            overall_join_key_weight += weight
+        if join_key:
+            for weight in join_key.values():
+                overall_join_key_weight += weight
         if prc + overall_join_key_weight > 100:
             logging.warning(
                 f"Overall weight of {join_key} and nulls - {prc} more then 100"
@@ -51,6 +53,7 @@ class Creator:
 
     @staticmethod
     def _eval_str(str_len: int, prc, email: bool, join_key: dict) -> str:
+        Creator.percentage_check(prc, join_key)
         random_word = "".join(choice(chr(randint(97, 122))) for _ in range(str_len))
         if email:
             random_word += "@gmail.com"
