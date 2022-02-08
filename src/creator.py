@@ -1,8 +1,17 @@
+import json
+import time
 from dataclasses import dataclass
 from random import randint, choices, choice, randrange
 import logging
 import datetime
+import socket
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
 
+
+
+
+from pyspark.sql import SparkSession
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -37,7 +46,7 @@ EXAMPLE_INPUT = [
 class Creator:
     input: list
     output_format: str
-    volume_gb: int
+    rows: int
 
     @staticmethod
     def percentage_check(prc: int, join_key: dict):
@@ -131,11 +140,63 @@ class Creator:
         line = {}
         for column in self.input:
             line[column["col_name"]] = self.evaluate(column)
-        return line
+        json_data = json.dumps(line)
 
-    def test_result(self):
-        print(self.give_one_line())
+        return json_data
+
+    @staticmethod
+    def session_creator():
+        return SparkSession \
+            .builder \
+            .appName("parquet_creator") \
+            .getOrCreate()
+
+    def send_to_socket(self):
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect(("127.0.0.1", 9090))
+        for _ in range(self.rows):
+            client_socket.sendall(bytes(self.give_one_line(), encoding="utf-8"))
+            # client_socket.send("smth".encode())
+
+    def write_to_console(self):
+        spark = self.session_creator()
+        lines = spark \
+            .readStream \
+            .format("socket") \
+            .option("host", "127.0.0.1") \
+            .option("port", 9090) \
+            .load()
 
 
-for _ in range(10000):
-    Creator(EXAMPLE_INPUT, "parquet", 100).test_result()
+
+
+        schema = (
+            StructType()
+                .add("ID", IntegerType())
+                .add("name", StringType())
+                .add("date", DateType())
+
+        )
+        time.sleep(10)
+        self.send_to_socket()
+
+
+        query = lines.select(col("value")) \
+            .writeStream \
+            .outputMode("append") \
+            .format("console") \
+            .start()
+
+        time.sleep(10)
+        self.send_to_socket()
+
+        query.awaitTermination()
+
+    def write_data(self, format_: str):
+        if format_ == "parquet":
+            self.write_to_console()
+
+    def execute(self):
+        self.write_data(format_=self.output_format)
+
+Creator(EXAMPLE_INPUT, "parquet", 10000).execute()
